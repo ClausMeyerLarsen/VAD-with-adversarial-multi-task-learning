@@ -1,3 +1,5 @@
+"""File for loading and saving results and models"""
+
 import pickle
 import torch
 import os
@@ -14,12 +16,13 @@ def save_model(models,t):
     fname = f"{fpath}\\{t+1}_epochs.pth"
     try:
         os.mkdir(res_path)
+    except OSError:
+        pass
+    try:
         os.mkdir(fpath)
     except OSError:
         pass
-    else:
-        print ("Successfully created the directory %s " % fpath)
-    torch.save(config.WVAD_model.state_dict(), fname)
+    torch.save(config.VAD.state_dict(), fname)
     
 def save_model_initial(models):
     """
@@ -34,7 +37,7 @@ def save_model_initial(models):
         pass
     else:
         print ("Successfully created the directory %s " % res_path)
-    torch.save(config.WVAD_model.state_dict(), fname)
+    torch.save(config.VAD.state_dict(), fname)
     
 def save_results(res,t):
     """
@@ -46,11 +49,13 @@ def save_results(res,t):
     fname = f"{fpath}\\epoch_{t}.pickle"
     try:
         os.mkdir(res_path)
+    except OSError:
+        pass
+    try:
         os.mkdir(fpath)
     except OSError:
         pass
-    else:
-        print ("Successfully created the directory %s " % fpath)
+    
     with open(fname, "wb") as fp:   #Pickling
         pickle.dump(res, fp, protocol=pickle.HIGHEST_PROTOCOL)    
         
@@ -64,11 +69,12 @@ def save_results_AUC(res):
     fname = f"{fpath}\\AUC_results_setA.pickle"
     try:
         os.mkdir(res_path)
+    except OSError:
+        pass
+    try:
         os.mkdir(fpath)
     except OSError:
         pass
-    else:
-        print ("Successfully created the directory %s " % fpath)
     with open(fname, "wb") as fp:   #Pickling
         pickle.dump(res, fp, protocol=pickle.HIGHEST_PROTOCOL)  
 
@@ -87,6 +93,6 @@ def load_model():
     current_dir = os.getcwd()
     fpath = f"{current_dir}\\results\\reference\\"
     fname = f"{fpath}\\initial.pth"
-    config.WVAD_model.load_state_dict(torch.load(fname), strict=False)
-    return config.WVAD_model
+    config.VAD.load_state_dict(torch.load(fname), strict=False)
+    return config.VAD
     

@@ -1,14 +1,37 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Mon Nov  1 16:29:43 2021
-
-@author: claus
-"""
+"""File for training the model"""
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
 
 import config
+
+def update_learning_rates():
+    """
+    Updates the learning rate of all layers"
+    """
+    for param_group in config.optimizer_EB1.param_groups:
+        param_group['lr'] = config.learning_rate
+    for param_group in config.optimizer_EB2.param_groups:
+        param_group['lr'] = config.learning_rate
+    for param_group in config.optimizer_EB3.param_groups:
+        param_group['lr'] = config.learning_rate
+    for param_group in config.optimizer_EB4.param_groups:
+        param_group['lr'] = config.learning_rate
+    for param_group in config.optimizer_FB.param_groups:
+        param_group['lr'] = config.learning_rate
+    for param_group in config.optimizer_DB3.param_groups:
+        param_group['lr'] = config.learning_rate
+    for param_group in config.optimizer_DB1.param_groups:
+        param_group['lr'] = config.learning_rate
+    for param_group in config.optimizer_DB2.param_groups:
+        param_group['lr'] = config.learning_rate
+    for param_group in config.optimizer_DN3.param_groups:
+        param_group['lr'] = config.learning_rate_DN*-1
+    for param_group in config.optimizer_DN1.param_groups:
+        param_group['lr'] = config.learning_rate_DN*-1
+    for param_group in config.optimizer_DN2.param_groups:
+        param_group['lr'] = config.learning_rate_DN*-1
+
 
 def calc_loss(true_labels, predictions):
     """
@@ -37,55 +60,32 @@ def back_propagation_full(loss, t):
     Performs the backward step to calculate gradients, then updates the parameters
     """
 
-    config.optimizer_conv1R.zero_grad() 
-    config.optimizer_conv2R.zero_grad() 
-    config.optimizer_conv3R.zero_grad() 
-    config.optimizer_conv4R.zero_grad() 
+    config.optimizer_EB1.zero_grad() 
+    config.optimizer_EB2.zero_grad() 
+    config.optimizer_EB3.zero_grad() 
+    config.optimizer_EB4.zero_grad() 
     config.optimizer_FB.zero_grad() 
     config.optimizer_DB1.zero_grad() 
     config.optimizer_DB2.zero_grad() 
     config.optimizer_DB3.zero_grad() 
-    config.optimizer_AN1.zero_grad() 
-    config.optimizer_AN2.zero_grad() 
-    config.optimizer_AN3.zero_grad() 
+    config.optimizer_DN1.zero_grad() 
+    config.optimizer_DN2.zero_grad() 
+    config.optimizer_DN3.zero_grad() 
     loss.backward()
 
-    for param_group in config.optimizer_conv1R.param_groups:
-        param_group['lr'] = config.learning_rate
-    for param_group in config.optimizer_conv2R.param_groups:
-        param_group['lr'] = config.learning_rate
-    for param_group in config.optimizer_conv3R.param_groups:
-        param_group['lr'] = config.learning_rate
-    for param_group in config.optimizer_conv4R.param_groups:
-        param_group['lr'] = config.learning_rate
-    for param_group in config.optimizer_FB.param_groups:
-        param_group['lr'] = config.learning_rate
-    for param_group in config.optimizer_DB3.param_groups:
-        param_group['lr'] = config.learning_rate
-    for param_group in config.optimizer_DB1.param_groups:
-        param_group['lr'] = config.learning_rate
-    for param_group in config.optimizer_DB2.param_groups:
-        param_group['lr'] = config.learning_rate
-    for param_group in config.optimizer_AN3.param_groups:
-        param_group['lr'] = config.learning_rate_AN*-1
-    for param_group in config.optimizer_AN1.param_groups:
-        param_group['lr'] = config.learning_rate_AN*-1
-    for param_group in config.optimizer_AN2.param_groups:
-        param_group['lr'] = config.learning_rate_AN*-1
-
-    config.optimizer_conv1R.step()
-    config.optimizer_conv2R.step()
-    config.optimizer_conv3R.step()
-    config.optimizer_conv4R.step()
+    config.optimizer_EB1.step()
+    config.optimizer_EB2.step()
+    config.optimizer_EB3.step()
+    config.optimizer_EB4.step()
 
     config.optimizer_FB.step()
     config.optimizer_DB1.step()
     config.optimizer_DB2.step()
     config.optimizer_DB3.step()
     
-    config.optimizer_AN1.step()
-    config.optimizer_AN2.step()
-    config.optimizer_AN3.step()
+    config.optimizer_DN1.step()
+    config.optimizer_DN2.step()
+    config.optimizer_DN3.step()
           
 
 def after_batches(batch_size, accumulated_accuracy, loss_acc, batch, loss, loss_AN, X, accuracy, size):
@@ -96,11 +96,12 @@ def after_batches(batch_size, accumulated_accuracy, loss_acc, batch, loss, loss_
     loss, current = loss.item(), batch * len(X)
     loss_acc /= batch_size
 
-    print(f"loss VAD: {loss_acc:>7f}  [{current+1:>5d}/{size:>5d}]")
+    print(f"Current file/Number of files: [{current+1:>5d}/{size:>5d}]")
+    print(f"loss VAD: {loss_acc:>7f}")
     print(f"Loss AN: {loss_AN}")
-    print(f"Accuracy: {accumulated_accuracy*100:>4f}")
+    print(f"Accuracy of batch: {accumulated_accuracy*100:>4f}")
     print(f"Learning rate: {config.learning_rate:>4f}")
-    print(f"Acc of plot: {accuracy:>4f}")
+    print(f"Acc of plot: {accuracy:>4f}\n")
     
 
 def calc_accuracy(pred, y):
@@ -131,7 +132,7 @@ def make_plots(predictions, X, y, true_labels):
 
             
 
-def train_loop_AN(train_data_loader, loss_best, t, padded):
+def train_loop(train_data_loader, t):
     """Variable initialisations"""
     size = len(train_data_loader.dataset)
     total_acc = 0
@@ -142,7 +143,7 @@ def train_loop_AN(train_data_loader, loss_best, t, padded):
     accumulated_accuracy = 0
     comb_loss = 0
     last_batch = 0
-    concats = 10 # The number of files to concatenate
+    concats = config.concatenates # The number of files to concatenate
     
     """ Initialises empty tensors for the data to be concatenated"""
     concat_X = torch.empty((1,1,1,0), device = config.device)
@@ -190,7 +191,7 @@ def train_loop_AN(train_data_loader, loss_best, t, padded):
             concat_noise = torch.empty((1,0), device = config.device)
             
             """Forward step"""
-            pred_DB, pred_AN = config.WVAD_model(X[0,:,:,:].float(), training=1)
+            pred_DB, pred_AN = config.VAD(X[0,:,:,:].float(), training=1)
     
             loss_DB = calc_loss(y,pred_DB)
             loss_AN = calc_loss_noisetypes(noise[:,0:len(pred_AN[0,0,:])], pred_AN[0,:,:])
@@ -211,7 +212,7 @@ def train_loop_AN(train_data_loader, loss_best, t, padded):
                 comb_loss = comb_loss/config.training_batch_size # Finding the mean of the loss
                 back_propagation_full(comb_loss, t) # Performs the backpropagation and optimisation step
 
-                after_batches(config.training_batch_size, accumulated_accuracy, loss_acc, batch, loss_DB, loss_AN_acc, X, accuracy, size) # Prints information about the latest forward step to the console
+                after_batches(config.training_batch_size, accumulated_accuracy, loss_acc, batch, loss_DB, loss_AN_acc, X, accuracy, size) # Prints information about the latest forward step to the console. Comment to keep the console clean
                 # make_plots(pred_DB.T, X, y, labs) # Plots the waveform, channel scores, predictions and true VAD labels from latest forward step
                 
                 """Resets variables"""
@@ -225,7 +226,7 @@ def train_loop_AN(train_data_loader, loss_best, t, padded):
                 del comb_loss
 
                 """Save information by the end of each training epoch"""
-                if batch > 4000:
+                if batch > config.files_per_epoch:
                     config.training_results_big["training"].append(total_acc/4620)
                     config.training_results_big["learning_rate"].append(config.learning_rate)
                     config.training_results_big["epochs"].append(t)

@@ -1,3 +1,4 @@
+"""File for performing tests on the validation and testing set"""
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
@@ -22,9 +23,9 @@ def make_plots(preds, X, y, labs):
     
     plt.plot(np.kron(abs(labs-y), samples_p_label)-1.6)
     new_acc = {1-sum((labs-y!=0))/len(y)}
-    print(f"New accuracy: {new_acc}")
+    print(f"Accuracy on plot: {new_acc}")
     plt.ylim([-1.1,1.1])
-    plt.title(f"{config.noise_type_AURORA} - {config.SNR_level_AURORA} - acc: {new_acc}")
+    plt.title(f"Noise type: {config.noise_type_AURORA} - SNR level: {config.SNR_level_AURORA} - acc: {new_acc}")
     plt.show
     plt.pause(0.0005)
 
@@ -42,11 +43,11 @@ def calc_pos_neg(labels, predictions):
     TN = sum(predictions_inv[labels_inv[0:len(predictions)]==1])
     return TP, FP, TN, FN
         
-def validation_loop(test_data_loader, loss_best, t, padded):
+def validation_loop(test_data_loader, t):
     """Variable initialisations"""
     accumulated_acc = 0
     last_batch = 0
-    concats = 10
+    concats = config.concatenates
     
     """ Initialises empty tensors for the data to be concatenated"""
     concat_X = torch.empty((1,1,1,0), device = device)
@@ -74,8 +75,7 @@ def validation_loop(test_data_loader, loss_best, t, padded):
 
             """The main validation loop. Runs after sufficient files are concatenated"""
             if files > last_batch + concats:
-                last_batch = batch
-                
+                last_batch = files
                 """Stores the data in original variable names and resets the tensors containing the concatenated files"""
                 X = concat_X
                 y = concat_y
@@ -84,10 +84,10 @@ def validation_loop(test_data_loader, loss_best, t, padded):
                 concat_y = torch.empty((1,0), device = device)
                 
                 """Forward step"""
-                pred, placeholder = config.WVAD_model(X[0,:,:,:].float())
+                pred, placeholder = config.VAD(X[0,:,:,:].float())
                 
                 """Calculates VAD predictions"""
-                labs = (pred[0,0,:]>pred[0,1,:]+config.VAD_threshold).to('cpu').detach().numpy()
+                labs = (pred[0,0,:]>pred[0,1,:]).to('cpu').detach().numpy()
                 npy = y[0,:].to('cpu').detach().numpy()
                 npy = npy[0:len(labs)]
                 acc = 1-sum((labs-npy!=0))/len(npy)
@@ -106,7 +106,7 @@ def validation_loop(test_data_loader, loss_best, t, padded):
                     
                     """Calculates the accuracy before plotting the raw waveform, the speech and non-speech scores and the predicted and true VAD labels"""
                     batch_accuracy = accumulated_acc/(times)
-                    print(batch_accuracy)
+                    print(f"Accuracy of batch: {batch_accuracy}")
                     npX = X[0,0,0,:].to('cpu').detach().numpy()
                     npy = y[0,:].to('cpu').detach().numpy()
                     preds_np = pred[0,:,:].to('cpu').detach().numpy()
@@ -123,11 +123,11 @@ def validation_loop(test_data_loader, loss_best, t, padded):
                     return
 
 
-def testing_loop(test_data_loader, loss_best, t, padded):
+def testing_loop(test_data_loader, t):
     """Variable initialisations"""
     ROC_samples = 201 # The number of points in the ROC curve
     last_batch = 0
-    concats = 10
+    concats = config.concatenates
     concat_X = torch.empty((1,1,1,0), device = device)
     concat_y = torch.empty((1,0), device = device)
     TP_acc = np.zeros((ROC_samples,))
@@ -135,6 +135,7 @@ def testing_loop(test_data_loader, loss_best, t, padded):
     TN_acc = np.zeros((ROC_samples,))
     FN_acc = np.zeros((ROC_samples,))
     accumulated_acc = np.zeros((ROC_samples,))
+    files = 0
     
     for batch, (X, y) in enumerate(test_data_loader):
         y = y.to(device)
@@ -148,56 +149,55 @@ def testing_loop(test_data_loader, loss_best, t, padded):
         
         """Concatenate audio and VAD labels"""
         if len(X[0,:,0,0]) != 0:
+            files += 1
             concat_X = torch.cat((concat_X, X),3)
             concat_y = torch.cat((concat_y, y),1)
             
-        """The main testing loop. Runs after sufficient files are concatenated"""
-        if batch > last_batch + concats:
-            last_batch = batch
-            
-            """Stores the data in original variable names and resets the tensors containing the concatenated files"""
-            X = concat_X
-            y = concat_y
-            
-            concat_X = torch.empty((1,1,1,0), device = device)
-            concat_y = torch.empty((1,0), device = device)
-            
-            """Forward step"""
-            pred, placeholder = config.WVAD_model(X[0,:,:,:].float())
-            labs = []
-            acc = []
-            
-            """Sweeps over the the scores of speech and non-speech channels using different thresholds and generates predictions"""
-            for index, (threshold) in enumerate(np.linspace(-1,1,ROC_samples)):
-                labs = (pred[0,0,:]>pred[0,1,:]+threshold).to('cpu').detach().numpy()
-                npy=y[0,:].to('cpu').detach().numpy()
-                npy = npy[0:len(labs)]
-                acc.append(1-sum((labs-npy!=0))/len(npy))
-                accumulated_acc[index] += acc[-1]
+            """The main testing loop. Runs after sufficient files are concatenated"""
+            if files > last_batch + concats:
+                last_batch = files
                 
-                """ Calculates  the number of true positives, false positive etc."""
-                TP, FP, TN, FN = calc_pos_neg(npy, labs)
+                """Stores the data in original variable names and resets the tensors containing the concatenated files"""
+                X = concat_X
+                y = concat_y
                 
-                """Each index corresponds to a threshold value"""
-                TP_acc[index] += TP
-                FP_acc[index] += FP
-                TN_acc[index] += TN
-                FN_acc[index] += FN
-                if (batch+1) > int(config.testing_batch_size - (config.testing_batch_size*(config.validation*0.5))):
-                    """Calculates the accuracy before plotting the raw waveform, the speech and non-speech scores and the predicted and true VAD labels"""
-                    batch_accuracy = accumulated_acc/(batch+1)
-                    npX = X[0,0,0,:].to('cpu').detach().numpy()
-                    npy = y[0,:].to('cpu').detach().numpy()
-                    preds = pred[0,:,:].to('cpu').detach().numpy()
-                    make_plots(preds, npX, npy, labs)
+                concat_X = torch.empty((1,1,1,0), device = device)
+                concat_y = torch.empty((1,0), device = device)
+                
+                """Forward step"""
+                pred, placeholder = config.VAD(X[0,:,:,:].float())
+                labs = []
+                acc = []
+                
+                """Sweeps over the the scores of speech and non-speech channels using different thresholds and generates predictions"""
+                for index, (threshold) in enumerate(np.linspace(-1,1,ROC_samples)):
+                    labs = (pred[0,0,:]>pred[0,1,:]+threshold).to('cpu').detach().numpy()
+                    npy=y[0,:].to('cpu').detach().numpy()
+                    npy = npy[0:len(labs)]
+                    acc.append(1-sum((labs-npy!=0))/len(npy))
+                    accumulated_acc[index] += acc[-1]
                     
-                    """Saves the data into a dictionary"""
-                    dict_key_PN = f"{config.noise_type_AURORA}_{config.SNR_level_AURORA}" 
-                    total_samples = FP_acc + TN_acc + TP_acc + FN_acc # Used to normalise the data
-                    config.training_results_AUC[f"{dict_key_PN}_ACC"].append(batch_accuracy)
-                    config.training_results_AUC[f"{dict_key_PN}_TP"] = (TP_acc/total_samples)
-                    config.training_results_AUC[f"{dict_key_PN}_FP"] = (FP_acc/total_samples)
-                    config.training_results_AUC[f"{dict_key_PN}_TN"] = (TN_acc/total_samples)
-                    config.training_results_AUC[f"{dict_key_PN}_FN"] = (FN_acc/total_samples)                           
-                    return
+                    """ Calculates  the number of true positives, false positive etc."""
+                    TP, FP, TN, FN = calc_pos_neg(npy, labs)
+                    
+                    """Each index corresponds to a threshold value"""
+                    TP_acc[index] += TP
+                    FP_acc[index] += FP
+                    TN_acc[index] += TN
+                    FN_acc[index] += FN
+                    if (files+1) > int(config.testing_batch_size - (config.testing_batch_size*(config.validation*0.5))):
+                        """Calculates the accuracy before plotting the raw waveform, the speech and non-speech scores and the predicted and true VAD labels"""
+                        npX = X[0,0,0,:].to('cpu').detach().numpy()
+                        npy = y[0,:].to('cpu').detach().numpy()
+                        preds = pred[0,:,:].to('cpu').detach().numpy()
+                        make_plots(preds, npX, npy, labs)
+                        
+                        """Saves the data into a dictionary"""
+                        dict_key_PN = f"{config.noise_type_AURORA}_{config.SNR_level_AURORA}" 
+                        total_samples = FP_acc + TN_acc + TP_acc + FN_acc # Used to normalise the data
+                        config.training_results_AUC[f"{dict_key_PN}_TP"] = (TP_acc/total_samples)
+                        config.training_results_AUC[f"{dict_key_PN}_FP"] = (FP_acc/total_samples)
+                        config.training_results_AUC[f"{dict_key_PN}_TN"] = (TN_acc/total_samples)
+                        config.training_results_AUC[f"{dict_key_PN}_FN"] = (FN_acc/total_samples)                           
+                        return
     

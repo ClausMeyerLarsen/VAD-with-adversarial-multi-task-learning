@@ -9,7 +9,7 @@ import os
 import config
 
 
-def get_element_single(idx, data, train = 0):
+def get_element_train(idx, data, train = 0):
     """
     Used in __getitem__ of the dataloader class. Takes the data and label paths and return the 
     data stored inside them
@@ -96,7 +96,7 @@ Each dataloader inherits the Dataset class. An __init__, __len__ and __getitem__
 necessary for the dataloader to work. One dataloader is created for the test and validation set
 and one is created for the training set
 """
-class TIMIT_train(Dataset):
+class AURORA2_train(Dataset):
     def __init__(self):
         self.data = get_paths_train("0", train=1)
       
@@ -104,7 +104,7 @@ class TIMIT_train(Dataset):
         return len(self.data)
     
     def __getitem__(self,idx):
-        return get_element_single(idx, self.data, train=1)
+        return get_element_train(idx, self.data, train=1)
     
 
     
@@ -113,25 +113,28 @@ class AURORA2_test(Dataset):
         data_folder_path = r"C:\Users\claus\OneDrive - Aalborg Universitet\Thesis\Simulations\AURORA_code\aurora2\SPEECHDATA\TESTA"
         label_folder_path = r"C:\Users\claus\OneDrive - Aalborg Universitet\Thesis\Simulations\AURORA_code\Aurora2TestSet-ReferenceVAD\\"
         
+        """Finds the folder corresponding to the desired noise type and SNR level """
         if config.SNR_level_AURORA == "CLEA":
             folders = f"CLEA{config.noise_type_AURORA}"
         else:
             folders = f"{config.noise_type_AURORA}_SNR{config.SNR_level_AURORA}"
+            
+        """ Finds the paths for all the desired speech files"""
         folders_data = glob.glob(data_folder_path + f"\{folders}*")
         data_file_list = []
         for i, (folder_data) in enumerate(folders_data):
             data_file_list.append([])
             data_file_list_tmp = glob.glob(folder_data + "/*.08")
 
-        # Making label files and speech files match up by reversing the name of their paths, sorting
-        # them alphabetically and reversing them back, before zipping them in a list    
-        label_file_list_short = data_file_list_tmp.copy()
+        """Finds the paths to the label files using the path to the speech file """ 
+        label_file_list = data_file_list_tmp.copy()
         for idx, (file_path) in enumerate(data_file_list_tmp):
             indices_backslash = [i for i, ltr in enumerate(file_path) if ltr == '\\']
-            label_file_list_short[idx] = f"{label_folder_path}\\{file_path[indices_backslash[-1]:-3]}"
+            label_file_list[idx] = f"{label_folder_path}\\{file_path[indices_backslash[-1]:-3]}"
         
+        """ Zips the speech paths and the label paths into one list"""
         self.data = []
-        for index, (data_path, label_path) in enumerate(zip(data_file_list_tmp, label_file_list_short)):
+        for index, (data_path, label_path) in enumerate(zip(data_file_list_tmp, label_file_list)):
             self.data.append([data_path,label_path])
 
      # %%       
@@ -139,22 +142,46 @@ class AURORA2_test(Dataset):
         return len(self.data)
     
     def __getitem__(self,idx):
+        """
+        Function for unpacking the speech and label files and save them into numpy arrays
+        """        
         data_tensor = []
         label_tensor = []
         data_tensor.append([])
         label_tensor.append([])
-        if idx > 333:
-            data_path, label_path = self.data[idx]
-            data_tensor.append(np.fromfile(data_path,dtype='>i2'))
-            label_tensor.append(np.fromfile(label_path,sep="\n"))
-            data_tensor = data_tensor[0:len(label_tensor)*80]
-            x = np.zeros((1,1,sum(len(item) for item in data_tensor)))
-            y = np.zeros((sum(len(item) for item in label_tensor)))
-            x[0,0,:] = np.hstack(data_tensor)
-            y = np.hstack(label_tensor)
-
-            return x, y
         
-        emptyX = np.zeros((1,1,0))
-        emptyy = np.zeros((1))
-        return emptyX,emptyy
+        """ For the validation split"""
+        if config.validation:
+            if idx <= 333:
+                data_path, label_path = self.data[idx]
+                data_tensor.append(np.fromfile(data_path,dtype='>i2'))
+                label_tensor.append(np.fromfile(label_path,sep="\n"))
+                data_tensor = data_tensor[0:len(label_tensor)*80]
+                x = np.zeros((1,1,sum(len(item) for item in data_tensor)))
+                y = np.zeros((sum(len(item) for item in label_tensor)))
+                x[0,0,:] = np.hstack(data_tensor)
+                y = np.hstack(label_tensor)
+                return x,y
+            
+            """If the randomly picked file is not in the right split, return empty arrays"""
+            emptyX = np.zeros((1,1,0))
+            emptyy = np.zeros((1))
+            return emptyX,emptyy
+            
+            """ For the testing split"""
+        else:
+            if idx > 333:
+                data_path, label_path = self.data[idx]
+                data_tensor.append(np.fromfile(data_path,dtype='>i2'))
+                label_tensor.append(np.fromfile(label_path,sep="\n"))
+                data_tensor = data_tensor[0:len(label_tensor)*80]
+                x = np.zeros((1,1,sum(len(item) for item in data_tensor)))
+                y = np.zeros((sum(len(item) for item in label_tensor)))
+                x[0,0,:] = np.hstack(data_tensor)
+                y = np.hstack(label_tensor)
+                return x, y
+            
+            """If the randomly picked file is not in the right split, return empty arrays"""
+            emptyX = np.zeros((1,1,0))
+            emptyy = np.zeros((1))
+            return emptyX,emptyy

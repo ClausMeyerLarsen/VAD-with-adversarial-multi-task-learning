@@ -1,35 +1,61 @@
+"""File for global variables. In the cell below some settings can be changed to alter the behaviour during training"""
+
 import torch
-import numpy as np
 from torch import nn
 
-from model_file import combined_networks
+from model_file import VAD_model
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print("Using {} device".format(device))
+# %% The variables in this cell can be customised
+learning_rate = 1e-2 # Learning rate for the EB, FB and DB layers
+learning_rate_DN = 1e-3 # Learning rate for the discriminative network
+LR_factor = 0.7 # The factor with which to decrease the learning rate after each epoch
+
+training_epochs = 30 # The number of epochs during training
+concatenates = 10 # The number of files to concatenate
+training_batch_size = 3  # The number of forward steps per backward step. Multiplied with "concatenates" this is the mini-batch size
+testing_batch_size = 650 # The number of files in the testing split. Validation split is half of this
+files_per_epoch = 8400
+AN_weight = 0.1 # The scalar referred to as "alpha" in the paper
+output_folder = "Enter your folder name here" # The name of the folder in which to store the results and models
+
+
 # %%
-training_results = {
-    "val_-5" : [],
-    "val_0" : [],
-    "val_5" : [],
-    "val_10" : [],
-    "val_15" : [],
-    "val_20" : [],
-    "val_CLEAN" : [],
-    "test_-5" : [],
-    "test_0" : [],
-    "test_5" : [],
-    "test_10" : [],
-    "test_15" : [],
-    "test_20" : [],
-    "test_CLEAN" : [],
-    "epochs" : [],
-    "learning_rate" : [],
-    "training_loss" : [],
-    "training_acc" : [],
-    "time_passed" : []
-    }
+training = 0 # Flag denoting whether the model is being trained or tested
+validation = 0 # Flag denoting whether to use the testing or validation split
+
+# Initialize the loss function
+loss_primary = nn.BCELoss()
+loss_secondary = nn.CrossEntropyLoss()
+
+# Make an instance of the model
+VAD = VAD_model().to(device)
+
+""" Initialize the optimisers"""
+optimizer_EB1 = torch.optim.RMSprop(VAD.EB1.parameters(), lr=learning_rate)
+optimizer_EB2 = torch.optim.RMSprop(VAD.EB2.parameters(), lr=learning_rate)
+optimizer_EB3 = torch.optim.RMSprop(VAD.EB3.parameters(), lr=learning_rate)
+optimizer_EB4 = torch.optim.RMSprop(VAD.EB4.parameters(), lr=learning_rate)
+
+optimizer_FB = torch.optim.RMSprop(VAD.FB.parameters(), lr=learning_rate)
+
+optimizer_DN1 = torch.optim.RMSprop(VAD.DN1.parameters(), lr=learning_rate_DN)
+optimizer_DN2 = torch.optim.RMSprop(VAD.DN2.parameters(), lr=learning_rate_DN)
+optimizer_DN3 = torch.optim.RMSprop(VAD.DN3.parameters(), lr=learning_rate_DN)
+
+optimizer_DB1 = torch.optim.RMSprop(VAD.DB1.parameters(), lr=learning_rate)
+optimizer_DB2 = torch.optim.RMSprop(VAD.DB2.parameters(), lr=learning_rate)
+optimizer_DB3 = torch.optim.RMSprop(VAD.DB3.parameters(), lr=learning_rate)
 
 
+
+
+noise_type_AURORA = "caf"
+SNR_level_AURORA = 0
+
+
+""" Storing results from training and validation"""
 training_results_big = {
     "training" : [],
     "val_caf_-5" : [],
@@ -127,6 +153,7 @@ training_results_big = {
     "time_passed" : []
     }
 
+""" Storing results from testing"""
 training_results_AUC = {
    
     "N1_-5_ACC" : [],
@@ -281,58 +308,5 @@ training_results_AUC = {
     "threshold" : [],
     "alpha" : []
     }
-learning_rate = 1e-2# 1e-3
-learning_rate_AN = 1e-3
-VAD_threshold = 0
-LR_factor = 0.7
-# Initialize the loss function
-loss_primary = nn.BCELoss()
-loss_secondary = nn.CrossEntropyLoss()
 
 
-WVAD_model = combined_networks().to(device)
-
-# Initialize the optimiser
-
-
-optimizer_conv1R = torch.optim.RMSprop(WVAD_model.conv1.parameters(), lr=learning_rate)
-optimizer_conv2R = torch.optim.RMSprop(WVAD_model.conv2.parameters(), lr=learning_rate)
-optimizer_conv3R = torch.optim.RMSprop(WVAD_model.conv3.parameters(), lr=learning_rate)
-optimizer_conv4R = torch.optim.RMSprop(WVAD_model.conv4.parameters(), lr=learning_rate)
-
-optimizer_FB = torch.optim.RMSprop(WVAD_model.FB.parameters(), lr=learning_rate)
-
-optimizer_AN1 = torch.optim.RMSprop(WVAD_model.AN1.parameters(), lr=learning_rate_AN)
-optimizer_AN2 = torch.optim.RMSprop(WVAD_model.AN2.parameters(), lr=learning_rate_AN)
-optimizer_AN3 = torch.optim.RMSprop(WVAD_model.AN3.parameters(), lr=learning_rate_AN)
-
-optimizer_DB1 = torch.optim.RMSprop(WVAD_model.DB1.parameters(), lr=learning_rate)
-optimizer_DB2 = torch.optim.RMSprop(WVAD_model.DB2.parameters(), lr=learning_rate)
-optimizer_DB3 = torch.optim.RMSprop(WVAD_model.DB3.parameters(), lr=learning_rate)
-
-lambda1 = lambda LR_factor: learning_rate*LR_factor
-lambda2 = lambda LR_factor: learning_rate_AN*LR_factor*-1
-
-
-scheduler_FB = torch.optim.lr_scheduler.LambdaLR(optimizer_FB, lr_lambda=lambda1)
-
-scheduler_DB1 = torch.optim.lr_scheduler.LambdaLR(optimizer_DB1, lr_lambda=lambda1)
-scheduler_DB2 = torch.optim.lr_scheduler.LambdaLR(optimizer_DB2, lr_lambda=lambda1)
-scheduler_DB3 = torch.optim.lr_scheduler.LambdaLR(optimizer_DB3, lr_lambda=lambda1)
-
-scheduler_AN1 = torch.optim.lr_scheduler.LambdaLR(optimizer_AN1, lr_lambda=lambda2)
-scheduler_AN2 = torch.optim.lr_scheduler.LambdaLR(optimizer_AN2, lr_lambda=lambda2)
-scheduler_AN3 = torch.optim.lr_scheduler.LambdaLR(optimizer_AN3, lr_lambda=lambda2)
-
-
-
-noise_type_AURORA = "caf"
-SNR_level_AURORA = 0
-training_batch_size = 1
-testing_batch_size = 160
-validation = 0
-padded = 0
-training = 0
-AN_weight = 0.1
-
-output_folder = "Enter your folder name here"
